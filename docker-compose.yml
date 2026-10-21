@@ -1,0 +1,12 @@
+services:
+  netmon:
+    build: .
+    image: netmon:local
+    ports:
+      - "8080:8080"
+    environment:
+      NETMON_INTERVAL: "15"
+    volumes:
+      # Edit targets.yaml on the host without rebuilding
+      - ./targets.yaml:/app/targets.yaml:ro
+    restart: unless-stopped

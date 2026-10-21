@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Netmon</title>
+  <style>
+    :root {
+      --bg: #f4f5f2; --panel: #ffffff; --ink: #1c1f1d; --muted: #6a706b;
+      --line: #dfe2dc; --up: #1f8a4c; --down: #c2412d; --pending: #a68a1b;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111412; --panel: #1a1e1b; --ink: #e6e9e4; --muted: #8d948e;
+        --line: #2b302c; --up: #4cc27f; --down: #ef6a52; --pending: #d8b84a;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--ink);
+      font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    }
+    main { max-width: 960px; margin: 0 auto; padding: 24px 16px 48px; }
+    header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 20px; }
+    h1 { font: 600 22px/1 var(--mono); margin: 0; letter-spacing: -0.02em; }
+    h1 span { color: var(--muted); font-weight: 400; }
+    .meta { color: var(--muted); font: 13px var(--mono); }
+    .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 20px; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+    .stat b { display: block; font: 600 26px/1.1 var(--mono); }
+    .stat small { color: var(--muted); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+    .card {
+      background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+      padding: 14px; border-left: 4px solid var(--pending);
+    }
+    .card.up { border-left-color: var(--up); }
+    .card.down { border-left-color: var(--down); }
+    .row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .name { font-weight: 600; }
+    .badge { font: 600 11px var(--mono); text-transform: uppercase; padding: 2px 7px; border-radius: 99px; color: #fff; background: var(--pending); }
+    .up .badge { background: var(--up); }
+    .down .badge { background: var(--down); }
+    .target { font: 12px var(--mono); color: var(--muted); margin: 2px 0 10px; word-break: break-all; }
+    .nums { display: flex; gap: 16px; font: 13px var(--mono); }
+    .nums span { color: var(--muted); }
+    .detail { font-size: 13px; color: var(--muted); margin-top: 6px; }
+    svg { width: 100%; height: 36px; margin-top: 8px; display: block; }
+    footer { margin-top: 28px; font: 12px var(--mono); color: var(--muted); }
+    footer a { color: inherit; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>netmon <span>/ network status</span></h1>
+    <div class="meta" id="meta">loading…</div>
+  </header>
+
+  <section class="summary">
+    <div class="stat"><b id="s-up">–</b><small>up</small></div>
+    <div class="stat"><b id="s-down">–</b><small>down</small></div>
+    <div class="stat"><b id="s-lat">–</b><small>avg latency</small></div>
+  </section>
+
+  <section class="grid" id="grid"></section>
+
+  <footer>
+    checks every {{ interval }}s ·
+    <a href="/api/status">/api/status</a> ·
+    <a href="/metrics">/metrics</a> ·
+    <a href="/healthz">/healthz</a>
+  </footer>
+</main>
+
+<script>
+  const fmt = (v) => (v === null || v === undefined ? "–" : v.toFixed(1) + " ms");
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+  function sparkline(values) {
+    const pts = values.map((v, i) => [i, v]).filter(([, v]) => v !== null);
+    if (pts.length < 2) return "";
+    const max = Math.max(...pts.map(([, v]) => v)) || 1;
+    const w = 200, h = 36, n = Math.max(values.length - 1, 1);
+    const d = pts.map(([i, v], k) => `${k ? "L" : "M"}${(i / n) * w},${h - 3 - (v / max) * (h - 6)}`).join(" ");
+    return `<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><path d="${d}" fill="none" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" opacity=".7"/></svg>`;
+  }
+
+  async function refresh() {
+    try {
+      const res = await fetch("/api/status");
+      const data = await res.json();
+      const t = data.targets;
+      const up = t.filter((x) => x.status === "up").length;
+      const down = t.filter((x) => x.status === "down").length;
+      const lats = t.map((x) => x.latency_ms).filter((x) => x !== null);
+      document.getElementById("s-up").textContent = up;
+      document.getElementById("s-down").textContent = down;
+      document.getElementById("s-lat").textContent = lats.length ? fmt(lats.reduce((a, b) => a + b, 0) / lats.length) : "–";
+      document.getElementById("meta").textContent = data.last_run ? "last check " + new Date(data.last_run).toLocaleTimeString() : "running first check…";
+      document.getElementById("grid").innerHTML = t.map((x) => `
+        <article class="card ${x.status}">
+          <div class="row"><span class="name">${esc(x.name)}</span><span class="badge">${x.status}</span></div>
+          <div class="target">${esc(x.type)} · ${esc(x.target)}</div>
+          <div class="nums">
+            <div><span>now</span> ${fmt(x.latency_ms)}</div>
+            <div><span>avg</span> ${fmt(x.avg_latency_ms)}</div>
+            <div><span>uptime</span> ${x.uptime_pct === null ? "–" : x.uptime_pct + "%"}</div>
+          </div>
+          <div class="detail">${esc(x.detail)}</div>
+          ${sparkline(x.history)}
+        </article>`).join("");
+    } catch (e) {
+      document.getElementById("meta").textContent = "can't reach the monitor API";
+    }
+  }
+  refresh();
+  setInterval(refresh, 5000);
+</script>
+</body>
+</html>

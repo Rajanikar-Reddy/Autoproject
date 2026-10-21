@@ -1,0 +1,32 @@
+# Targets the monitor checks every `interval` seconds.
+# Types: dns (host), tcp (host, port), ping (host), http (url, expect_status)
+interval: 30
+
+targets:
+  - name: Google DNS resolver
+    type: tcp
+    host: 8.8.8.8
+    port: 53
+
+  - name: Cloudflare DNS resolver
+    type: tcp
+    host: 1.1.1.1
+    port: 53
+
+  - name: github.com DNS
+    type: dns
+    host: github.com
+
+  - name: GitHub HTTPS
+    type: http
+    url: https://github.com
+    expect_status: 200
+
+  - name: Cloudflare ping
+    type: ping
+    host: 1.1.1.1
+
+  - name: SSH on github.com
+    type: tcp
+    host: github.com
+    port: 22

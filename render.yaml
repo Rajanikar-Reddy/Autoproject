@@ -1,0 +1,12 @@
+# Render Blueprint: Render reads this when you create a "Blueprint" from the repo.
+services:
+  - type: web
+    name: netmon
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeploy: false   # GitHub Actions triggers the deploy after tests pass
+    envVars:
+      - key: NETMON_INTERVAL
+        value: "30"
